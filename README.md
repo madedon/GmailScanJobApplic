@@ -1,6 +1,3 @@
- # GmailScanJobApplic
-Gmail review of job applications
-
 This repository contains a simple Python script for scanning a Gmail
 mailbox and extracting basic information about job applications from
 your inbox. By default it searches the last six months of messages. The
@@ -16,10 +13,11 @@ Make sure you have Python 3.8+ installed.
 3. Install the required packages:
 
 ```bash
-+pip install -r requirements.txt
+pip install -r requirements.txt
 ```
 
 4. Run the script (use ``--months`` to change the search window):
+
 ```bash
 python scan_job_applications.py --months 6
 ```
