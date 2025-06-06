@@ -1,0 +1,5 @@
+# Ignore token and credentials files
+credentials.json
+token.json
+__pycache__/
+job_applications.csv
