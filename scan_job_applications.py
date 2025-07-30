@@ -69,19 +69,32 @@ def get_message_detail(service, msg_id):
     headers = payload.get('headers', [])
     subject = next((h['value'] for h in headers if h['name'] == 'Subject'), '')
     date_str = next((h['value'] for h in headers if h['name'] == 'Date'), '')
-    date = pd.to_datetime(date_str)
+    
+    # Handle date parsing with error handling
+    try:
+        date = pd.to_datetime(date_str) if date_str else pd.Timestamp.now()
+    except (ValueError, TypeError):
+        date = pd.Timestamp.now()
+    
     parts = payload.get('parts', [])
     body = ''
     if parts:
         for part in parts:
             if part.get('mimeType') == 'text/plain':
-                data = part['body']['data']
-                body = base64.urlsafe_b64decode(data).decode('utf-8')
-                break
+                try:
+                    data = part.get('body', {}).get('data')
+                    if data:
+                        body = base64.urlsafe_b64decode(data).decode('utf-8')
+                        break
+                except (ValueError, TypeError, UnicodeDecodeError):
+                    continue
     else:
-        data = payload.get('body', {}).get('data')
-        if data:
-            body = base64.urlsafe_b64decode(data).decode('utf-8')
+        try:
+            data = payload.get('body', {}).get('data')
+            if data:
+                body = base64.urlsafe_b64decode(data).decode('utf-8')
+        except (ValueError, TypeError, UnicodeDecodeError):
+            body = ''
     return subject, body, date
 
 
@@ -104,22 +117,41 @@ def scan_job_applications(months: int) -> None:
     service = authenticate()
     messages = query_messages(service, months)
     rows = []
+    errors = 0
+    
     for m in messages:
-        subject, body, date = get_message_detail(service, m['id'])
-        info = extract_job_info(subject, body)
-        if info:
-            app_code, job_title, company = info
-            rows.append({
-                'application_code': app_code,
-                'date': date.strftime('%Y-%m-%d'),
-                'company': company,
-                'job_title': job_title,
-            })
+        try:
+            subject, body, date = get_message_detail(service, m['id'])
+            info = extract_job_info(subject, body)
+            if info:
+                app_code, job_title, company = info
+                # Handle date formatting with error handling
+                try:
+                    date_formatted = date.strftime('%Y-%m-%d')
+                except (AttributeError, ValueError):
+                    date_formatted = pd.Timestamp.now().strftime('%Y-%m-%d')
+                
+                rows.append({
+                    'application_code': app_code,
+                    'date': date_formatted,
+                    'company': company,
+                    'job_title': job_title,
+                })
+        except Exception as e:
+            errors += 1
+            print(f"Warning: Failed to process message {m.get('id', 'unknown')}: {e}")
+            continue
+    
+    if errors > 0:
+        print(f"Encountered {errors} errors while processing messages.")
+    
     df = pd.DataFrame(rows)
     print(df)
     if not df.empty:
         df.to_csv('job_applications.csv', index=False)
         print('Saved to job_applications.csv')
+    else:
+        print('No job applications found.')
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Scan Gmail for job applications")
